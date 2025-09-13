@@ -77,8 +77,26 @@ function attachSocketHandlers(io) {
           createdAt: booking.createdAt
         };
 
-        // Broadcast new booking for drivers to listen
-        io.emit('booking:new', bookingPayload);
+        // Broadcast new booking targeted to nearby available drivers (by vehicle type)
+        try {
+          const { Driver } = require('../models/userModels');
+          const geolib = require('geolib');
+          const radiusKm = parseFloat(process.env.BROADCAST_RADIUS_KM || '5');
+          const drivers = await Driver.find({ available: true, vehicleType: booking.vehicleType }).lean();
+          const within = drivers.filter(d => d.lastKnownLocation && (
+            geolib.getDistance(
+              { latitude: d.lastKnownLocation.latitude, longitude: d.lastKnownLocation.longitude },
+              { latitude: booking.pickup.latitude, longitude: booking.pickup.longitude }
+            ) / 1000
+          ) <= radiusKm);
+          within.forEach(d => {
+            io.to(`driver:${String(d._id)}`).emit('booking:new', bookingPayload);
+          });
+          // Also emit aggregated broadcast for dashboards
+          io.emit('booking:new:broadcast', { ...bookingPayload, targetedCount: within.length });
+        } catch (_) {
+          io.emit('booking:new', bookingPayload);
+        }
         socket.emit('booking_created', bookingPayload);
       } catch (e) {
         socket.emit('booking_error', { message: e.message });
@@ -98,5 +116,7 @@ function broadcast(event, data) {
   if (ioRef) ioRef.emit(event, data);
 }
 
-module.exports = { attachSocketHandlers, broadcast };
+function getIo() { return ioRef; }
+
+module.exports = { attachSocketHandlers, broadcast, getIo };
 

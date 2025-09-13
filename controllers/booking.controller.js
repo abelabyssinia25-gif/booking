@@ -113,19 +113,26 @@ exports.create = async (req, res) => {
       updatedAt: booking.updatedAt
     };
     
-    // Broadcast to nearby drivers
+    // Broadcast to nearby drivers (by vehicle type)
     try {
       const { Driver } = require('../models/userModels');
+      const geolib = require('geolib');
       const drivers = await Driver.find({ available: true, ...(vehicleType ? { vehicleType } : {}) }).lean();
       const radiusKm = parseFloat(process.env.BROADCAST_RADIUS_KM || '5');
-      const within = drivers.filter(d => d.lastKnownLocation && isWithinRadiusKm(d.lastKnownLocation, pickup, radiusKm));
-      const payload = {
-        ...data,
-        distanceKmToPickup: undefined
-      };
+      const within = drivers.filter(d => d.lastKnownLocation && (
+        geolib.getDistance(
+          { latitude: d.lastKnownLocation.latitude, longitude: d.lastKnownLocation.longitude },
+          { latitude: pickup.latitude, longitude: pickup.longitude }
+        ) / 1000
+      ) <= radiusKm);
+      const payload = { ...data };
       const { broadcast } = require('../sockets');
-      // Emit one general and targeted per driver room for reliability
-      broadcast('booking:new', payload);
+      // Aggregate broadcast for dashboards
+      broadcast('booking:new:broadcast', { ...payload, targetedCount: within.length });
+      // Targeted emits
+      const { getIo } = require('../sockets/utils');
+      const io = getIo && getIo();
+      if (io) within.forEach(d => io.to(`driver:${String(d._id)}`).emit('booking:new', payload));
     } catch (_) {}
 
     return res.status(201).json(data);
