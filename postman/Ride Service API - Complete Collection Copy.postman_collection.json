@@ -503,6 +503,28 @@
 					"name": "📱 Booking Management",
 					"item": [
 						{
+							"name": "Get Nearby Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{driverToken}}" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/bookings/nearby?latitude=40.7128&longitude=-74.0060&radiusKm=5&vehicleType=mini&limit=20",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1","bookings","nearby"],
+									"query": [
+										{ "key": "latitude", "value": "40.7128" },
+										{ "key": "longitude", "value": "-74.0060" },
+										{ "key": "radiusKm", "value": "5" },
+										{ "key": "vehicleType", "value": "mini" },
+										{ "key": "limit", "value": "20" }
+									]
+								}
+							},
+							"response": []
+						},
+						{
 							"name": "Create Booking - Mini",
 							"event": [
 								{
@@ -1405,6 +1427,28 @@
 				{
 					"name": "📱 Booking Management",
 					"item": [
+						{
+							"name": "Get Nearby Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{ "key": "Authorization", "value": "Bearer {{driverToken}}" }
+								],
+								"url": {
+									"raw": "{{baseUrl}}/v1/bookings/nearby?latitude=40.7128&longitude=-74.0060&radiusKm=5&vehicleType=mini&limit=20",
+									"host": ["{{baseUrl}}"],
+									"path": ["v1","bookings","nearby"],
+									"query": [
+										{ "key": "latitude", "value": "40.7128" },
+										{ "key": "longitude", "value": "-74.0060" },
+										{ "key": "radiusKm", "value": "5" },
+										{ "key": "vehicleType", "value": "mini" },
+										{ "key": "limit", "value": "20" }
+									]
+								}
+							},
+							"response": []
+						},
 						{
 							"name": "Accept Booking",
 							"request": {
