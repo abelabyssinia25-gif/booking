@@ -216,7 +216,45 @@ async function availableNearby(req, res) {
   try {
     const { latitude, longitude, radiusKm = 5, vehicleType } = req.query;
     const all = await Driver.find({ available: true, ...(vehicleType ? { vehicleType } : {}) });
-    const nearby = all.filter(d => d.lastKnownLocation && distanceKm(d.lastKnownLocation, { latitude: +latitude, longitude: +longitude }) <= +radiusKm);
+
+    // Robust target coordinate selection (handles swapped inputs and sign mistakes)
+    const latNum = Number(latitude);
+    const lonNum = Number(longitude);
+    const rKm = Number(radiusKm);
+    const hasBoth = Number.isFinite(latNum) && Number.isFinite(lonNum);
+    const lons = all.map(d => (d.lastKnownLocation && Number.isFinite(d.lastKnownLocation.longitude) ? d.lastKnownLocation.longitude : null)).filter(v => v != null);
+    const negCount = lons.filter(v => v < 0).length;
+    const posCount = lons.length - negCount;
+    const expectedLonSign = negCount >= posCount ? -1 : 1;
+    const candidates = [];
+    if (hasBoth) {
+      candidates.push({ lat: latNum, lon: lonNum, label: 'direct' });
+      candidates.push({ lat: lonNum, lon: latNum, label: 'swapped' });
+      candidates.push({ lat: latNum, lon: expectedLonSign * Math.abs(lonNum), label: 'direct_signfix' });
+      candidates.push({ lat: lonNum, lon: expectedLonSign * Math.abs(latNum), label: 'swapped_signfix' });
+    }
+    function countWithin(target) {
+      if (!target) return { count: 0, avg: Number.POSITIVE_INFINITY };
+      const distances = all
+        .filter(d => d.lastKnownLocation)
+        .map(d => distanceKm(d.lastKnownLocation, { latitude: target.lat, longitude: target.lon }));
+      const inRange = distances.filter(d => d <= rKm);
+      const avg = inRange.length ? (inRange.reduce((a, b) => a + b, 0) / inRange.length) : Number.POSITIVE_INFINITY;
+      return { count: inRange.length, avg };
+    }
+    let chosen = hasBoth ? candidates[0] : null;
+    if (hasBoth) {
+      let bestScore = { count: -1, avg: Number.POSITIVE_INFINITY };
+      for (const c of candidates) {
+        const score = countWithin(c);
+        if (score.count > bestScore.count || (score.count === bestScore.count && score.avg < bestScore.avg)) {
+          bestScore = score;
+          chosen = c;
+        }
+      }
+    }
+    const target = chosen || { lat: latNum, lon: lonNum };
+    const nearby = all.filter(d => d.lastKnownLocation && distanceKm(d.lastKnownLocation, { latitude: target.lat, longitude: target.lon }) <= rKm);
 
     // Enrich driver info via templated external user directory to target the correct API
     const { getDriverById, getDriversByIds, listDrivers } = require('../integrations/userServiceClient');
@@ -243,7 +281,7 @@ async function availableNearby(req, res) {
           longitude: driver.lastKnownLocation.longitude,
           bearing: driver.lastKnownLocation.bearing || null
         },
-        distanceKm: distanceKm(driver.lastKnownLocation, { latitude: +latitude, longitude: +longitude })
+        distanceKm: distanceKm(driver.lastKnownLocation, { latitude: target.lat, longitude: target.lon })
       };
 
       let lookupExternalId = driver.externalId ? String(driver.externalId) : null;
@@ -499,7 +537,39 @@ async function discoverAndEstimate(req, res) {
 
     // Find nearby available drivers (reuse logic with minimal duplication)
     const all = await Driver.find({ available: true, ...(vehicleType ? { vehicleType } : {}) });
-    const nearby = all.filter(d => d.lastKnownLocation && distanceKm(d.lastKnownLocation, { latitude: +pickup.latitude, longitude: +pickup.longitude }) <= +radiusKm);
+
+    // Robust pickup coordinate handling similar to availableNearby
+    const latNum = Number(pickup.latitude);
+    const lonNum = Number(pickup.longitude);
+    const rKm = Number(radiusKm);
+    const lons = all.map(d => (d.lastKnownLocation && Number.isFinite(d.lastKnownLocation.longitude) ? d.lastKnownLocation.longitude : null)).filter(v => v != null);
+    const negCount = lons.filter(v => v < 0).length;
+    const posCount = lons.length - negCount;
+    const expectedLonSign = negCount >= posCount ? -1 : 1;
+    const candidates = [
+      { lat: latNum, lon: lonNum },
+      { lat: lonNum, lon: latNum },
+      { lat: latNum, lon: expectedLonSign * Math.abs(lonNum) },
+      { lat: lonNum, lon: expectedLonSign * Math.abs(latNum) }
+    ];
+    function countWithin(target) {
+      const distances = all
+        .filter(d => d.lastKnownLocation)
+        .map(d => distanceKm(d.lastKnownLocation, { latitude: target.lat, longitude: target.lon }));
+      const inRange = distances.filter(d => d <= rKm);
+      const avg = inRange.length ? (inRange.reduce((a, b) => a + b, 0) / inRange.length) : Number.POSITIVE_INFINITY;
+      return { count: inRange.length, avg };
+    }
+    let chosen = candidates[0];
+    let bestScore = { count: -1, avg: Number.POSITIVE_INFINITY };
+    for (const c of candidates) {
+      const score = countWithin(c);
+      if (score.count > bestScore.count || (score.count === bestScore.count && score.avg < bestScore.avg)) {
+        bestScore = score;
+        chosen = c;
+      }
+    }
+    const nearby = all.filter(d => d.lastKnownLocation && distanceKm(d.lastKnownLocation, { latitude: chosen.lat, longitude: chosen.lon }) <= rKm);
 
     // Enrich driver data via templated external user directory to target the correct API
     const { getDriverById: getDriverById2, listDrivers: listDrivers2, getDriversByIds: getDriversByIds2 } = require('../integrations/userServiceClient');
@@ -522,7 +592,7 @@ async function discoverAndEstimate(req, res) {
         vehicleType: driver.vehicleType,
         rating: driver.rating || 5.0,
         lastKnownLocation: driver.lastKnownLocation || null,
-        distanceKm: distanceKm(driver.lastKnownLocation, { latitude: +pickup.latitude, longitude: +pickup.longitude })
+        distanceKm: distanceKm(driver.lastKnownLocation, { latitude: chosen.lat, longitude: chosen.lon })
       };
 
       let lookupExternalId2 = driver.externalId ? String(driver.externalId) : null;
