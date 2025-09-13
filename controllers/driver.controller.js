@@ -103,7 +103,28 @@ async function setAvailability(req, res) {
   try {
     const driverId = String((((req.user && req.user.id) !== undefined && (req.user && req.user.id) !== null) ? req.user.id : req.params.id) || '');
     if (!driverId) return res.status(400).json({ message: 'Invalid driver id' });
-    const d = await Driver.findByIdAndUpdate(driverId, { $set: { available: !!req.body.available } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    // Gather driver info from token to persist for enrichment later
+    const tokenUser = req.user || {};
+    const inferredName = tokenUser.name || tokenUser.fullName || tokenUser.displayName || (tokenUser.user && (tokenUser.user.name || tokenUser.user.fullName || tokenUser.user.displayName));
+    const inferredPhone = tokenUser.phone || tokenUser.phoneNumber || tokenUser.mobile || (tokenUser.user && (tokenUser.user.phone || tokenUser.user.phoneNumber || tokenUser.user.mobile));
+    const inferredEmail = tokenUser.email || (tokenUser.user && tokenUser.user.email);
+    const inferredVehicleType = tokenUser.vehicleType || (tokenUser.user && tokenUser.user.vehicleType);
+    const inferredExternalId = tokenUser.externalId || tokenUser.sub || (tokenUser.user && (tokenUser.user.externalId || tokenUser.user.id));
+
+    const d = await Driver.findByIdAndUpdate(
+      driverId,
+      { 
+        $set: { 
+          available: !!req.body.available,
+          ...(inferredName ? { name: inferredName } : {}),
+          ...(inferredPhone ? { phone: inferredPhone } : {}),
+          ...(inferredEmail ? { email: inferredEmail } : {}),
+          ...(inferredVehicleType ? { vehicleType: inferredVehicleType } : {}),
+          ...(inferredExternalId ? { externalId: String(inferredExternalId) } : {})
+        }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
     if (!d) return res.status(404).json({ message: 'Not found' });
     
     // Add driver basic information from JWT token
@@ -141,8 +162,29 @@ async function updateLocation(req, res) {
     if (bearing !== undefined && bearing >= 0 && bearing <= 360) {
       locationUpdate.bearing = bearing;
     }
-    
-    const d = await Driver.findByIdAndUpdate(driverId, { $set: { lastKnownLocation: locationUpdate } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+
+    // Gather driver info from token to persist for enrichment later
+    const tokenUser = req.user || {};
+    const inferredName = tokenUser.name || tokenUser.fullName || tokenUser.displayName || (tokenUser.user && (tokenUser.user.name || tokenUser.user.fullName || tokenUser.user.displayName));
+    const inferredPhone = tokenUser.phone || tokenUser.phoneNumber || tokenUser.mobile || (tokenUser.user && (tokenUser.user.phone || tokenUser.user.phoneNumber || tokenUser.user.mobile));
+    const inferredEmail = tokenUser.email || (tokenUser.user && tokenUser.user.email);
+    const inferredVehicleType = tokenUser.vehicleType || (tokenUser.user && tokenUser.user.vehicleType);
+    const inferredExternalId = tokenUser.externalId || tokenUser.sub || (tokenUser.user && (tokenUser.user.externalId || tokenUser.user.id));
+
+    const d = await Driver.findByIdAndUpdate(
+      driverId,
+      { 
+        $set: { 
+          lastKnownLocation: locationUpdate,
+          ...(inferredName ? { name: inferredName } : {}),
+          ...(inferredPhone ? { phone: inferredPhone } : {}),
+          ...(inferredEmail ? { email: inferredEmail } : {}),
+          ...(inferredVehicleType ? { vehicleType: inferredVehicleType } : {}),
+          ...(inferredExternalId ? { externalId: String(inferredExternalId) } : {})
+        }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
     if (!d) return res.status(404).json({ message: 'Not found' });
     
     // Add driver basic information from JWT token
@@ -204,7 +246,7 @@ async function availableNearby(req, res) {
         distanceKm: distanceKm(driver.lastKnownLocation, { latitude: +latitude, longitude: +longitude })
       };
 
-      const lookupExternalId = driver.externalId ? String(driver.externalId) : null;
+      let lookupExternalId = driver.externalId ? String(driver.externalId) : null;
       let name = driver.name || undefined;
       let phone = driver.phone || undefined;
       let email = driver.email || undefined;
@@ -249,6 +291,23 @@ async function availableNearby(req, res) {
                 if (match.phone && !driver.phone) update.phone = match.phone;
                 if (Object.keys(update).length) await Driver.findByIdAndUpdate(driver._id, { $set: update });
               } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 3) If still missing and we don't have externalId, try external lookup by internal id from token context
+      if ((!name || !phone) && !lookupExternalId) {
+        try {
+          const maybe = await getDriverById(String(driver._id), { headers: authHeader });
+          if (maybe) {
+            name = name || maybe.name;
+            phone = phone || maybe.phone;
+            email = email || maybe.email;
+            // if external service returns a different id, save as externalId
+            if (maybe.id && String(maybe.id) !== String(driver._id)) {
+              try { await Driver.findByIdAndUpdate(driver._id, { $set: { externalId: String(maybe.id) } }); } catch (_) {}
+              lookupExternalId = String(maybe.id);
             }
           }
         } catch (_) {}
@@ -466,7 +525,7 @@ async function discoverAndEstimate(req, res) {
         distanceKm: distanceKm(driver.lastKnownLocation, { latitude: +pickup.latitude, longitude: +pickup.longitude })
       };
 
-      const lookupExternalId2 = driver.externalId ? String(driver.externalId) : null;
+      let lookupExternalId2 = driver.externalId ? String(driver.externalId) : null;
       let name = (lookupExternalId2 && idToExternal[lookupExternalId2]?.name) || driver.name || undefined;
       let phone = (lookupExternalId2 && idToExternal[lookupExternalId2]?.phone) || driver.phone || undefined;
       let email = (lookupExternalId2 && idToExternal[lookupExternalId2]?.email) || driver.email || undefined;
@@ -500,6 +559,19 @@ async function discoverAndEstimate(req, res) {
                 if (match.phone && !driver.phone) update.phone = match.phone;
                 if (Object.keys(update).length) await Driver.findByIdAndUpdate(driver._id, { $set: update });
               } catch (_) {}
+            }
+          }
+          // If no externalId, try lookup by internal id and persist returned id as externalId
+          if ((!name || !phone) && !lookupExternalId2) {
+            const maybe = await getDriverById2(String(driver._id), { headers: authHeader2 });
+            if (maybe) {
+              name = name || maybe.name;
+              phone = phone || maybe.phone;
+              email = email || maybe.email;
+              if (maybe.id && String(maybe.id) !== String(driver._id)) {
+                try { await Driver.findByIdAndUpdate(driver._id, { $set: { externalId: String(maybe.id) } }); } catch (_) {}
+                lookupExternalId2 = String(maybe.id);
+              }
             }
           }
         } catch (_) {}

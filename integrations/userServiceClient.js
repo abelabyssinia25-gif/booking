@@ -23,12 +23,14 @@ function getAuthHeaders(tokenOrHeader) {
 }
 
 async function httpGet(url, headers) {
-  const res = await axios.get(url, { headers });
+  const timeout = parseInt(process.env.USER_SERVICE_TIMEOUT_MS || process.env.HTTP_TIMEOUT_MS || '5000');
+  const res = await axios.get(url, { headers, timeout });
   return res.data;
 }
 
 async function httpPost(url, body, headers) {
-  const res = await axios.post(url, body, { headers: { 'Content-Type': 'application/json', ...(headers || {}) } });
+  const timeout = parseInt(process.env.USER_SERVICE_TIMEOUT_MS || process.env.HTTP_TIMEOUT_MS || '5000');
+  const res = await axios.post(url, body, { headers: { 'Content-Type': 'application/json', ...(headers || {}) }, timeout });
   return res.data;
 }
 
@@ -68,12 +70,16 @@ async function getDriverDetails(id, token) {
 
 async function getDriverById(id, options) {
   const token = options && options.headers ? options.headers.Authorization : undefined;
-  const res = await getDriverDetails(id, token);
+  let res = await getDriverDetails(id, token);
+  if (!res.success) {
+    // Fallback to service bearer if provided
+    res = await getDriverDetails(id, undefined);
+  }
   if (!res.success) return null;
-  return { 
-    id: String(res.user.id), 
-    name: res.user.name, 
-    phone: res.user.phone, 
+  return {
+    id: String(res.user.id),
+    name: res.user.name,
+    phone: res.user.phone,
     email: res.user.email,
     vehicleType: res.user.vehicleType,
     carPlate: res.user.carPlate,
@@ -104,9 +110,10 @@ async function getDriversByIds(ids = [], token) {
     const url = `${base}/drivers/batch`;
     const data = await httpPost(url, { ids }, getAuthHeaders(token));
     const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available }));
+    return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, email: u.email, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available }));
   } catch (e) {
-    const results = await Promise.all((ids || []).map(id => getDriverById(id, { headers: getAuthHeaders(token) })));
+    // Fallback per-id with internal fallback in getDriverById (will try service bearer)
+    const results = await Promise.all((ids || []).map(id => getDriverById(id, {})));
     return results.filter(Boolean);
   }
 }
@@ -116,10 +123,21 @@ async function listDrivers(query = {}, options) {
     const base = getAuthBase();
     const url = new URL(`${base}/drivers`);
     Object.entries(query || {}).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, v); });
-    const data = await httpGet(url.toString(), getAuthHeaders(options && options.headers ? options.headers.Authorization : undefined));
+    const token = options && options.headers ? options.headers.Authorization : undefined;
+    let data = await httpGet(url.toString(), getAuthHeaders(token));
     const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available }));
-  } catch (_) { return []; }
+    return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, email: u.email, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available }));
+  } catch (_) {
+    try {
+      // Fallback with service bearer
+      const base = getAuthBase();
+      const url = new URL(`${base}/drivers`);
+      Object.entries(query || {}).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, v); });
+      const data = await httpGet(url.toString(), getAuthHeaders(undefined));
+      const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, email: u.email, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available }));
+    } catch (__) { return []; }
+  }
 }
 
 async function listPassengers(query = {}, options) {
