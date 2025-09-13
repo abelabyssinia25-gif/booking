@@ -166,7 +166,7 @@ exports.list = async (req, res) => {
       
       // Try external service first
       try {
-        const { getPassengerById } = require('../integrations/userServiceClient');
+        const { getPassengerById } = require('../services/userDirectory');
         const additionalPassengerPromises = nonObjectIdPassengerIds.map(async (id) => {
           try {
             const authHeader = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
@@ -615,4 +615,3 @@ exports.rateDriver = async (req, res) => {
     return res.status(500).json({ message: `Failed to rate driver: ${e.message}` });
   }
 }
-
