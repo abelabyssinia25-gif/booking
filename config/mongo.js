@@ -8,7 +8,7 @@ async function connectMongo() {
   try {
     // v4 of mongoose no longer needs useNewUrlParser or useUnifiedTopology
     await mongoose.connect(uri);
-    console.log('✅ MongoDB connected');
+    
   } catch (err) {
     console.error('❌ MongoDB connection error:', err.message);
     throw err;

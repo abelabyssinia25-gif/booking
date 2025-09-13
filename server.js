@@ -41,12 +41,11 @@ attachSocketHandlers(io);
 const PORT = process.env.BOOKING_PORT || process.env.PORT || 4000;
 connectMongo()
   .then(() => {
-    console.log(`🔑 JWT Secret: ${process.env.JWT_SECRET ? 'Custom' : 'Default (secret)'}`);
     
     // Start position update service
     positionUpdateService.start();
     
-    server.listen(PORT, () => console.log(`Server listening on :${PORT}`));
+    server.listen(PORT, () => {});
   })
   .catch((e) => {
     console.error('Failed to connect Mongo', e);

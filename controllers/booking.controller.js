@@ -38,7 +38,7 @@ exports.create = async (req, res) => {
     // Extract passenger info from JWT token
     const extractFromToken = (user) => {
       if (!user) return {};
-      console.log('Extracting from JWT token - full user object:', JSON.stringify(user, null, 2));
+      
       
       // The JWT token now contains passenger data directly
       const result = {
@@ -47,7 +47,7 @@ exports.create = async (req, res) => {
         email: user.email
       };
       
-      console.log('Extracted token meta:', result);
+      
       return result;
     };
     const tokenMeta = extractFromToken(req.user);
@@ -65,9 +65,7 @@ exports.create = async (req, res) => {
           passengerName = passengerName || info.name;
           passengerPhone = passengerPhone || info.phone;
         }
-      } catch (e) {
-        console.log('Failed to fetch passenger from user service:', e.message);
-      }
+      } catch (e) { }
     }
     
     // Final validation
@@ -75,12 +73,7 @@ exports.create = async (req, res) => {
       return res.status(422).json({ message: 'Passenger name and phone are required from auth token or user directory' });
     }
 
-    console.log('Creating booking with passenger data:', {
-      passengerId,
-      passengerName,
-      passengerPhone,
-      tokenMeta
-    });
+    
 
     const booking = await Booking.create({ 
       passengerId, 
@@ -92,11 +85,7 @@ exports.create = async (req, res) => {
       fareBreakdown: est.fareBreakdown 
     });
     
-    console.log('Created booking with stored passenger data:', {
-      passengerId: booking.passengerId,
-      passengerName: booking.passengerName,
-      passengerPhone: booking.passengerPhone
-    });
+    
     const data = {
       id: String(booking._id),
       passengerId,
@@ -145,8 +134,7 @@ exports.list = async (req, res) => {
     const userId = req.user?.id;
     let query = {};
     
-    // Debug logging
-    console.log('Booking list request:', { userType, userId, user: req.user });
+    
     
     // If user is passenger, only show their bookings
     // If user is admin/superadmin, show all bookings
@@ -155,37 +143,31 @@ exports.list = async (req, res) => {
     }
     // For admin/superadmin, no filter is applied (shows all bookings)
     
-    console.log('Query being used:', query);
+    
     const rows = await Booking.find(query).sort({ createdAt: -1 }).lean(); 
-    console.log('Found bookings in DB:', rows.length);
-    console.log('Sample booking:', rows[0]);
-    console.log('Sample booking passenger data:', {
-      passengerId: rows[0]?.passengerId,
-      passengerName: rows[0]?.passengerName,
-      passengerPhone: rows[0]?.passengerPhone
-    });
+    
     
     const { Passenger } = require('../models/userModels');
     const { Types } = require('mongoose');
     const passengerIds = [...new Set(rows.map(r => r.passengerId))];
-    console.log('Unique passenger IDs:', passengerIds);
+    
     
     const validObjectIds = passengerIds.filter(id => Types.ObjectId.isValid(id));
-    console.log('Valid ObjectIds:', validObjectIds);
+    
     
     const passengers = validObjectIds.length
       ? await Passenger.find({ _id: { $in: validObjectIds } }).select({ _id: 1, name: 1, phone: 1 }).lean()
       : [];
-    console.log('Found passengers in DB:', passengers.length);
+    
     
     const pidToPassenger = Object.fromEntries(passengers.map(p => [String(p._id), { id: String(p._id), name: p.name, phone: p.phone }]));
-    console.log('Passenger mapping:', pidToPassenger);
+    
     
     // Enhanced passenger lookup for non-ObjectId passengerIds using external directory
     const nonObjectIdPassengerIds = passengerIds.filter(id => !Types.ObjectId.isValid(id));
     let additionalPassengers = {};
     if (nonObjectIdPassengerIds.length > 0) {
-      console.log('Non-ObjectId passenger IDs found:', nonObjectIdPassengerIds);
+      
       
       // Try external service first
       try {
@@ -195,10 +177,7 @@ exports.list = async (req, res) => {
             const authHeader = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
             const info = await getPassengerById(id, { headers: authHeader });
             return info ? { id, info } : null;
-          } catch (e) {
-            console.log(`Failed to fetch passenger ${id} from external service:`, e.message);
-            return null;
-          }
+          } catch (e) { return null; }
         });
         const additionalPassengerResults = await Promise.all(additionalPassengerPromises);
         additionalPassengers = Object.fromEntries(
@@ -206,10 +185,7 @@ exports.list = async (req, res) => {
             .filter(result => result !== null)
             .map(result => [result.id, { id: result.id, name: result.info.name, phone: result.info.phone }])
         );
-        console.log('External service results:', additionalPassengers);
-      } catch (e) {
-        console.log('Failed to fetch additional passengers from external service:', e.message);
-      }
+      } catch (e) { }
       
       // Do not generate mock passengers
     }
@@ -217,7 +193,6 @@ exports.list = async (req, res) => {
     // Get passenger info from JWT token if available
     let jwtPassengerInfo = null;
     if (req.user && req.user.id && req.user.type === 'passenger') {
-      console.log('Full JWT user object:', JSON.stringify(req.user, null, 2));
       
       // The JWT token now contains passenger data directly
       jwtPassengerInfo = {
@@ -226,7 +201,7 @@ exports.list = async (req, res) => {
         phone: req.user.phone || req.user.phoneNumber || req.user.mobile,
         email: req.user.email
       };
-      console.log('Extracted JWT passenger info:', jwtPassengerInfo);
+      
     }
 
     const authHeader = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
@@ -247,26 +222,26 @@ exports.list = async (req, res) => {
       // 1. Try JWT passenger info first (most current)
       if (jwtPassengerInfo && String(jwtPassengerInfo.id) === String(b.passengerId)) {
         passenger = jwtPassengerInfo;
-        console.log(`Using JWT passenger info for booking ${b._id}:`, passenger);
+        
       }
       // 2. Try stored passenger data in booking (from creation time)
       else if (b.passengerName || b.passengerPhone) {
         passenger = { id: b.passengerId, name: b.passengerName, phone: b.passengerPhone };
-        console.log(`Using stored passenger data for booking ${b._id}:`, passenger);
+        
       }
       // 3. Try database lookup
       else if (pidToPassenger[b.passengerId]) {
         passenger = pidToPassenger[b.passengerId];
-        console.log(`Using database passenger data for booking ${b._id}:`, passenger);
+        
       }
       // 4. Try additional passengers (external service)
       else if (additionalPassengers[b.passengerId]) {
         passenger = additionalPassengers[b.passengerId];
-        console.log(`Using additional passenger data for booking ${b._id}:`, passenger);
+        
       }
       // 5. If still missing, leave passenger undefined (no mock)
       
-      console.log(`Final passenger for booking ${b._id}:`, passenger);
+      
       
       const driverBasic = b.driverId ? driverInfoMap[String(b.driverId)] || undefined : undefined;
       return {
@@ -287,8 +262,7 @@ exports.list = async (req, res) => {
       updatedAt: b.updatedAt
       };
     });
-    console.log('Found bookings:', normalized.length);
-    console.log('Sample normalized booking:', normalized[0]);
+    
     return res.json(normalized); 
   } catch (e) { 
     console.error('Error in booking list:', e);

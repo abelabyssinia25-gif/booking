@@ -10,7 +10,7 @@ class PositionUpdateService {
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log('Position update service started');
+    
   }
 
   stop() {
@@ -23,13 +23,12 @@ class PositionUpdateService {
     this.intervals.clear();
     
     this.isRunning = false;
-    console.log('Position update service stopped');
+    
   }
 
   // Start tracking position updates for a trip
   startTracking(tripId, driverId, passengerId) {
     if (this.intervals.has(tripId)) {
-      console.log(`Already tracking trip ${tripId}`);
       return;
     }
 
@@ -59,7 +58,7 @@ class PositionUpdateService {
     }, 60000); // 60 seconds
 
     this.intervals.set(tripId, interval);
-    console.log(`Started tracking position for trip ${tripId}`);
+    
   }
 
   // Stop tracking position updates for a trip
@@ -68,7 +67,7 @@ class PositionUpdateService {
     if (interval) {
       clearInterval(interval);
       this.intervals.delete(tripId);
-      console.log(`Stopped tracking position for trip ${tripId}`);
+      
     }
   }
 
