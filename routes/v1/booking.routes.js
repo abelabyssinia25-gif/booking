@@ -32,4 +32,3 @@ router.post('/:id/rate-driver', authenticate, authorize('passenger'), ctrl.rateD
 router.get('/vehicle/types', authenticate, authorize('passenger'), (req, res) => res.json(['mini','sedan','van']));
 
 module.exports = router;
-
