@@ -112,6 +112,22 @@ exports.create = async (req, res) => {
       createdAt: booking.createdAt,
       updatedAt: booking.updatedAt
     };
+    
+    // Broadcast to nearby drivers
+    try {
+      const { Driver } = require('../models/userModels');
+      const drivers = await Driver.find({ available: true, ...(vehicleType ? { vehicleType } : {}) }).lean();
+      const radiusKm = parseFloat(process.env.BROADCAST_RADIUS_KM || '5');
+      const within = drivers.filter(d => d.lastKnownLocation && isWithinRadiusKm(d.lastKnownLocation, pickup, radiusKm));
+      const payload = {
+        ...data,
+        distanceKmToPickup: undefined
+      };
+      const { broadcast } = require('../sockets');
+      // Emit one general and targeted per driver room for reliability
+      broadcast('booking:new', payload);
+    } catch (_) {}
+
     return res.status(201).json(data);
   } catch (e) { return res.status(500).json({ message: `Failed to create booking: ${e.message}` }); }
 }
@@ -633,6 +649,12 @@ exports.ratePassenger = async (req, res) => {
   } catch (e) {
     return res.status(500).json({ message: `Failed to rate passenger: ${e.message}` });
   }
+}
+
+function isWithinRadiusKm(a, b, radiusKm) {
+  if (!a || !b || a.latitude == null || a.longitude == null || b.latitude == null || b.longitude == null) return false;
+  const d = geolib.getDistance({ latitude: a.latitude, longitude: a.longitude }, { latitude: b.latitude, longitude: b.longitude }) / 1000;
+  return d <= radiusKm;
 }
 
 // Rate driver (passenger rates driver after trip completion)

@@ -3,6 +3,18 @@ let ioRef;
 function attachSocketHandlers(io) {
   ioRef = io;
   io.on('connection', (socket) => {
+    // Register driver room based on auth token if provided
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token || socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '');
+      if (token) {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+        const driverId = decoded && decoded.type === 'driver' ? String(decoded.id) : null;
+        if (driverId) {
+          socket.join(`driver:${driverId}`);
+        }
+      }
+    } catch (_) {}
     // Passenger creates a booking request
     socket.on('booking_request', async (payload) => {
       try {
@@ -65,7 +77,7 @@ function attachSocketHandlers(io) {
           createdAt: booking.createdAt
         };
 
-        // Broadcast for drivers to listen
+        // Broadcast new booking for drivers to listen
         io.emit('booking:new', bookingPayload);
         socket.emit('booking_created', bookingPayload);
       } catch (e) {
