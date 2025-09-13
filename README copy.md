@@ -28,3 +28,16 @@ API Highlights
 Socket.io broadcasts:
 - `driver:position`, `pricing:update`, `booking:update`, `booking:assigned`
 
+Environment Variables
+
+- `MONGO_URI`: Mongo connection string
+- `JWT_SECRET`: HMAC secret when JWKS is not used
+- `AUTH_JWKS_URL`: JWKS endpoint for RS256 tokens
+- `AUTH_AUDIENCE`: Expected audience for tokens
+- `AUTH_ISSUER`: Expected issuer for tokens
+- `AUTH_DEBUG`: Set `1` to enable verbose auth logs
+- `AUTH_BASE_URL`: Base URL of external User Service (auth directory)
+- `PASSENGER_LOOKUP_URL_TEMPLATE`: Optional template, e.g. `https://auth.example.com/passengers/{id}`
+- `DRIVER_LOOKUP_URL_TEMPLATE`: Optional template, e.g. `https://auth.example.com/drivers/{id}`
+- `USER_SERVICE_TIMEOUT_MS`: HTTP timeout for user service calls (default 5000)
+
