@@ -207,7 +207,25 @@ async function updateLocation(req, res) {
       updatedAt: d.updatedAt,
       driver: driverInfo
     };
-    
+    // Broadcast driver location updates for passengers to listen
+    try {
+      const { broadcast, getIo } = require('../sockets');
+      const payload = {
+        driverId: String(d._id),
+        vehicleType: d.vehicleType,
+        available: d.available,
+        lastKnownLocation: d.lastKnownLocation,
+        updatedAt: d.updatedAt
+      };
+      // Generic event
+      broadcast('driver:location', payload);
+      // Driver-specific channel for targeted subscribers
+      const io = getIo && getIo();
+      if (io) io.emit(`driver:location:${String(d._id)}`, payload);
+      // Backwards compatibility
+      broadcast('driver:position', payload);
+    } catch (_) {}
+
     return res.json(response);
   } catch (e) { return res.status(500).json({ message: e.message }); }
 }
