@@ -166,7 +166,7 @@ exports.list = async (req, res) => {
       
       // Try external service first
       try {
-        const { getPassengerById } = require('../services/userDirectory');
+        const { getPassengerById } = require('../integrations/userServiceClient');
         const additionalPassengerPromises = nonObjectIdPassengerIds.map(async (id) => {
           try {
             const authHeader = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;

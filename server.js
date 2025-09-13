@@ -38,7 +38,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 attachSocketHandlers(io);
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.BOOKING_PORT || process.env.PORT || 4000;
 connectMongo()
   .then(() => {
     console.log(`🔑 JWT Secret: ${process.env.JWT_SECRET ? 'Custom' : 'Default (secret)'}`);
