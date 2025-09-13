@@ -5,6 +5,8 @@ const { authenticate, authorize } = require('../../middleware/auth');
 
 router.post('/', authenticate, authorize('passenger'), ctrl.create);
 router.get('/', authenticate, authorize('passenger','admin','superadmin'), ctrl.list);
+// Nearby bookings for drivers
+router.get('/nearby', authenticate, authorize('driver','admin','staff','superadmin'), ctrl.nearby);
 // Debug endpoint to check authentication
 router.get('/debug/auth', authenticate, (req, res) => {
   const { id, type, name, phone, email, wallet, rating, rewardPoints, iat, exp } = req.user || {};

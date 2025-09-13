@@ -531,6 +531,67 @@ exports.estimate = async (req, res) => {
   } catch (e) { return res.status(500).json({ message: `Failed to estimate fare: ${e.message}` }); }
 }
 
+// GET /v1/bookings/nearby?latitude=...&longitude=...&radiusKm=5&vehicleType=mini&limit=20
+exports.nearby = async (req, res) => {
+  try {
+    // Only drivers (or staff/admin) can view nearby available bookings
+    const userType = req.user && req.user.type;
+    if (!['driver','admin','staff','superadmin'].includes(String(userType || ''))) {
+      return res.status(403).json({ message: 'Only drivers or staff can view nearby bookings' });
+    }
+
+    const latitude = parseFloat(req.query.latitude);
+    const longitude = parseFloat(req.query.longitude);
+    const radiusKm = parseFloat(req.query.radiusKm || '5');
+    const vehicleType = req.query.vehicleType || undefined;
+    const limit = Math.min(parseInt(req.query.limit || '20', 10), 100);
+
+    if (!isFinite(latitude) || !isFinite(longitude)) {
+      return res.status(400).json({ message: 'Valid latitude and longitude are required' });
+    }
+
+    // Find only requested (unassigned) bookings optionally filtered by vehicleType
+    const query = { status: 'requested', ...(vehicleType ? { vehicleType } : {}) };
+    const rows = await Booking.find(query).sort({ createdAt: -1 }).lean();
+
+    // Compute distances and filter within radius
+    const withDistance = rows
+      .map(b => {
+        const dKm = geolib.getDistance(
+          { latitude, longitude },
+          { latitude: b.pickup?.latitude, longitude: b.pickup?.longitude }
+        ) / 1000;
+        return { booking: b, distanceKm: dKm };
+      })
+      .filter(x => isFinite(x.distanceKm) && x.distanceKm <= radiusKm);
+
+    // Sort by distance and apply limit
+    withDistance.sort((a, b) => a.distanceKm - b.distanceKm);
+    const selected = withDistance.slice(0, limit);
+
+    // Attach minimal passenger info if present in booking; do not expand externally here
+    const result = selected.map(x => ({
+      id: String(x.booking._id),
+      passengerId: x.booking.passengerId,
+      passenger: (x.booking.passengerName || x.booking.passengerPhone)
+        ? { id: x.booking.passengerId, name: x.booking.passengerName, phone: x.booking.passengerPhone }
+        : undefined,
+      vehicleType: x.booking.vehicleType,
+      pickup: x.booking.pickup,
+      dropoff: x.booking.dropoff,
+      distanceKm: Math.round(x.distanceKm * 100) / 100,
+      fareEstimated: x.booking.fareEstimated,
+      status: x.booking.status,
+      createdAt: x.booking.createdAt,
+      updatedAt: x.booking.updatedAt
+    }));
+
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ message: `Failed to retrieve nearby bookings: ${e.message}` });
+  }
+}
+
 // Rate passenger (driver rates passenger after trip completion)
 exports.ratePassenger = async (req, res) => {
   try {
