@@ -1,0 +1,33 @@
+{
+  "name": "user-service",
+  "version": "2.0.0",
+  "description": "User Service for Ride Booking Application",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": ["user-service", "microservice", "ride-booking"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.18.0",
+    "morgan": "^1.10.1",
+    "sequelize": "^6.35.0",
+    "mysql2": "^3.6.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
