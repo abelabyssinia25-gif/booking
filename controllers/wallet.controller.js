@@ -24,12 +24,13 @@ exports.topup = async (req, res) => {
       status: 'pending',
       metadata: { reason }
     });
+    txn.save();
 
-    const notifyUrl = process.env.SANTIMPAY_NOTIFY_URL || `${process.env.BASE_URL || 'https://example.com'}/v1/wallet/webhook`;
+    const notifyUrl = process.env.SANTIMPAY_NOTIFY_URL ;
     const response = await DirectPayment(String(tx._id), amount, reason, notifyUrl, phoneNumber, paymentMethod);
 
     // Store gateway response minimal data
-    await Transaction.findByIdAndUpdate(tx._id, { metadata: { ...tx.metadata, gatewayResponse: response } });
+    await Transaction.findByIdAndUpdate(tx._id, { metadata: { ...tx.metadata, gatewayResponse: response, txnId:response.data.TxnId } });
 
     return res.status(202).json({ message: 'Topup initiated', transactionId: String(tx._id) });
   } catch (e) {
@@ -100,16 +101,6 @@ exports.withdraw = async (req, res) => {
       status: 'pending',
       metadata: { destination }
     });
-
-    const notifyUrl = process.env.SANTIMPAY_PAYOUT_NOTIFY_URL || `${process.env.BASE_URL || 'https://example.com'}/v1/wallet/webhook`;
-    try {
-      const response = await PayoutB2C(String(tx._id), amount, destination, notifyUrl, method);
-      await Transaction.findByIdAndUpdate(tx._id, { metadata: { ...tx.metadata, gatewayResponse: response } });
-      return res.status(202).json({ message: 'Withdrawal initiated', transactionId: String(tx._id) });
-    } catch (err) {
-      await Transaction.findByIdAndUpdate(tx._id, { status: 'failed', metadata: { ...tx.metadata, error: err.message } });
-      return res.status(502).json({ message: `Payout failed: ${err.message}` });
-    }
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
