@@ -1,11 +1,31 @@
 const { Wallet, Transaction } = require('../models/common');
-const { DirectPayment, PayoutB2C } = require('../integrations/santimpay');
+const { DirectPayment } = require('../integrations/santimpay');
 
 exports.topup = async (req, res) => {
   try {
-    const { amount, paymentMethod = 'santimpay', phoneNumber, reason = 'Wallet Topup' } = req.body || {};
+    const { amount, paymentMethod = 'santimpay', reason = 'Wallet Topup' } = req.body || {};
     if (!amount || amount <= 0) return res.status(400).json({ message: 'amount must be > 0' });
-    if (!phoneNumber) return res.status(400).json({ message: 'phoneNumber is required' });
+    // Phone must come from token
+    const tokenPhone = req.user && (req.user.phone || req.user.phoneNumber || req.user.mobile);
+    if (!tokenPhone) return res.status(400).json({ message: 'phoneNumber missing in token' });
+    const normalizeMsisdnEt = (raw) => {
+      if (!raw) return null;
+      let s = String(raw).trim();
+      s = s.replace(/\s+/g, '').replace(/[-()]/g, '');
+      // Replace leading 0 with +251, or 251 without +, or keep +251
+      if (/^\+?251/.test(s)) {
+        s = s.replace(/^\+?251/, '+251');
+      } else if (/^0\d+/.test(s)) {
+        s = s.replace(/^0/, '+251');
+      } else if (/^9\d{8}$/.test(s)) {
+        s = '+251' + s;
+      }
+      // Final validation: +2519XXXXXXXX (total length 13)
+      if (!/^\+2519\d{8}$/.test(s)) return null;
+      return s;
+    };
+    const msisdn = normalizeMsisdnEt(tokenPhone);
+    if (!msisdn) return res.status(400).json({ message: 'Invalid phone format in token. Required: +2519XXXXXXXX' });
 
     const userId = String(req.user.id);
     const role = req.user.type;
@@ -22,12 +42,13 @@ exports.topup = async (req, res) => {
       type: 'credit',
       method: 'santimpay',
       status: 'pending',
+      msisdn: msisdn,
       metadata: { reason }
     });
-    txn.save();
+    await tx.save();
 
     const notifyUrl = process.env.SANTIMPAY_NOTIFY_URL ;
-    const response = await DirectPayment(String(tx._id), amount, reason, notifyUrl, phoneNumber, paymentMethod);
+    const response = await DirectPayment(String(tx._id), amount, reason, notifyUrl, msisdn, paymentMethod);
 
     // Store gateway response minimal data
     await Transaction.findByIdAndUpdate(tx._id, { metadata: { ...tx.metadata, gatewayResponse: response, txnId:response.data.TxnId } });
@@ -64,7 +85,20 @@ exports.webhook = async (req, res) => {
       await Wallet.updateOne({ userId: tx.userId, role: tx.role }, { $inc: { balance: tx.amount } }, { upsert: true });
     }
 
-    return res.json({ ok: true, status: normalizedStatus });
+    // Respond with concise, important fields only
+    return res.json({
+      ok: true,
+      txnId: body.TxnId || body.txnId,
+      refId: body.RefId || body.refId,
+      status: (body.Status || body.status),
+      statusReason: body.StatusReason || body.message,
+      amount: body.amount || body.Amount || body.TotalAmount,
+      currency: body.currency || body.Currency || 'ETB',
+      msisdn: body.Msisdn || body.msisdn,
+      paymentVia: body.paymentVia || body.PaymentMethod,
+      message: body.message,
+      updateType: body.updateType || body.UpdateType
+    });
   } catch (e) {
     return res.status(500).json({ message: e.message });
   }
@@ -105,4 +139,3 @@ exports.withdraw = async (req, res) => {
     return res.status(500).json({ message: e.message });
   }
 };
-

@@ -59,29 +59,5 @@ async function DirectPayment(id, amount, paymentReason, notifyUrl, phoneNumber, 
   }
 }
 
-async function PayoutB2C(id, amount, destination, notifyUrl, paymentMethod = 'santimpay') {
-  // Assuming similar signing requirements; adjust when official docs are available
-  const token = await generateSignedTokenForDirectPayment(amount, 'Wallet Payout', paymentMethod, destination);
-  const payload = {
-    ID: id,
-    Amount: amount,
-    Destination: destination,
-    MerchantID: GATEWAY_MERCHANT_ID,
-    SignedToken: token,
-    NotifyURL: notifyUrl,
-    PaymentMethod: paymentMethod
-  };
-  const url = `${BASE_URL}/payout-b2c`;
-  try {
-    const res = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
-    return res.data;
-  } catch (e) {
-    const status = e.response?.status || 'ERR';
-    const data = e.response?.data;
-    const text = typeof data === 'string' ? data : JSON.stringify(data);
-    throw new Error(`SantimPay payout-b2c failed: ${status} ${text}`);
-  }
-}
-
-module.exports = { generateSignedTokenForDirectPayment, DirectPayment, PayoutB2C };
+module.exports = { generateSignedTokenForDirectPayment, DirectPayment };
 
