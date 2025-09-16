@@ -36,7 +36,9 @@ async function generateSignedTokenForDirectPayment(amount, paymentReason, paymen
 }
 
 async function DirectPayment(id, amount, paymentReason, notifyUrl, phoneNumber, paymentMethod) {
-  const token = await generateSignedTokenForDirectPayment(amount, paymentReason, paymentMethod, phoneNumber);
+  // Gateway expects specific payment method casing
+  const method = paymentMethod;
+  const token = await generateSignedTokenForDirectPayment(amount, paymentReason, method, phoneNumber);
   const payload = {
     ID: id,
     Amount: amount,
@@ -45,7 +47,7 @@ async function DirectPayment(id, amount, paymentReason, notifyUrl, phoneNumber, 
     SignedToken: token,
     PhoneNumber: phoneNumber,
     NotifyURL: notifyUrl,
-    PaymentMethod: paymentMethod
+    PaymentMethod: method
   };
   const url = `${BASE_URL}/direct-payment`;
   try {

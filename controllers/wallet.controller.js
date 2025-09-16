@@ -3,7 +3,7 @@ const { DirectPayment } = require('../integrations/santimpay');
 
 exports.topup = async (req, res) => {
   try {
-    const { amount, paymentMethod = 'santimpay', reason = 'Wallet Topup' } = req.body || {};
+    const { amount, paymentMethod, reason = 'Wallet Topup' } = req.body || {};
     if (!amount || amount <= 0) return res.status(400).json({ message: 'amount must be > 0' });
     // Phone must come from token
     const tokenPhone = req.user && (req.user.phone || req.user.phoneNumber || req.user.mobile);
@@ -47,8 +47,19 @@ exports.topup = async (req, res) => {
     });
     await tx.save();
 
+    // Normalize payment method for SantimPay API (avoid unsupported values)
+    const normalizePaymentMethod = (method) => {
+      const m = String(method || '').trim().toLowerCase();
+      if (m === 'telebirr' || m === 'tele') return 'Telebirr';
+      if (m === 'cbe' || m === 'cbe-birr' || m === 'cbebirr') return 'CBE';
+      if (m === 'hellocash' || m === 'hello-cash') return 'HelloCash';
+      // Default to Telebirr if missing or unsupported
+      return 'Telebirr';
+    };
+    const methodForGateway = normalizePaymentMethod(paymentMethod);
+
     const notifyUrl = process.env.SANTIMPAY_NOTIFY_URL ;
-    const response = await DirectPayment(String(tx._id), amount, reason, notifyUrl, msisdn, paymentMethod);
+    const response = await DirectPayment(String(tx._id), amount, reason, notifyUrl, msisdn, methodForGateway);
 
     // Store gateway response minimal data
     await Transaction.findByIdAndUpdate(tx._id, { metadata: { ...tx.metadata, gatewayResponse: response, txnId:response.data.TxnId } });
